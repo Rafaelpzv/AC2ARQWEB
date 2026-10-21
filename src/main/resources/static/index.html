@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Controle de Projetos</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --card: #fff;
+      --txt: #1f2937;
+      --mut: #6b7280;
+      --pri: #2563eb;
+      --err: #b91c1c;
+      --errbg: #fee2e2;
+      --ok: #166534;
+      --okbg: #dcfce7;
+      --bd: #e5e7eb;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --card: #1f2937;
+        --txt: #f3f4f6;
+        --mut: #9ca3af;
+        --bd: #374151;
+        --errbg: #450a0a;
+        --err: #fca5a5;
+        --okbg: #052e16;
+        --ok: #86efac;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--txt);
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      margin: 0 0 20px;
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--bd);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.1rem;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: .85rem;
+      color: var(--mut);
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    input,
+    textarea {
+      padding: 8px;
+      border: 1px solid var(--bd);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--txt);
+      font: inherit;
+    }
+
+    button {
+      padding: 9px 18px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--pri);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+
+    #msg {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+
+    #msg.erro {
+      display: block;
+      background: var(--errbg);
+      color: var(--err);
+    }
+
+    #msg.ok {
+      display: block;
+      background: var(--okbg);
+      color: var(--ok);
+    }
+
+    .tabela {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid var(--bd);
+      font-size: .92rem;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--mut);
+      font-weight: 600;
+    }
+
+    .vazio {
+      color: var(--mut);
+      padding: 12px 0;
+    }
+
+    @media (max-width:600px) {
+      form {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Controle de Projetos</h1>
+    <div id="msg" role="alert"></div>
+
+    <section>
+      <h2>Novo projeto</h2>
+      <form id="form">
+        <label class="full">Descrição *<textarea id="descricao" rows="2"></textarea></label>
+        <label>Data de início *<input id="dataInicio" type="date"></label>
+        <label>Data de fim<input id="dataFim" type="date"></label>
+        <div class="full"><button id="btn" type="submit">Salvar projeto</button></div>
+      </form>
+    </section>
+
+    <section>
+      <h2>Projetos cadastrados</h2>
+      <div class="tabela">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Descrição</th>
+              <th>Início</th>
+              <th>Fim</th>
+              <th>Funcionários</th>
+            </tr>
+          </thead>
+          <tbody id="corpo"></tbody>
+        </table>
+        <div id="vazio" class="vazio" hidden>Nenhum projeto cadastrado.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const API = (location.protocol === 'file:' ? 'http://localhost:8081' : '') + '/api/projeto';
+    const $ = id => document.getElementById(id);
+    const fmt = d => d ? d.split('-').reverse().join('/') : '—';
+
+    function mostrar(texto, tipo) {
+      const m = $('msg');
+      m.textContent = texto;
+      m.className = tipo;
+    }
+
+    async function erroDaResposta(res) {
+      try {
+        const corpo = await res.json();
+        if (Array.isArray(corpo.errors) && corpo.errors.length) return corpo.errors.join(' | ');
+        return corpo.message || corpo.error || ('Erro HTTP ' + res.status);
+      } catch { return 'Erro inesperado (HTTP ' + res.status + ').'; }
+    }
+
+    async function carregar() {
+      try {
+        const res = await fetch(API);
+        if (!res.ok) return mostrar(await erroDaResposta(res), 'erro');
+        const projetos = await res.json();
+        const corpo = $('corpo');
+        corpo.replaceChildren();
+        $('vazio').hidden = projetos.length > 0;
+        for (const p of projetos) {
+          const tr = document.createElement('tr');
+          const nomes = p.funcionarios.map(f => f.nome).join(', ') || '—';
+          [p.id, p.descricao, fmt(p.dataInicio), fmt(p.dataFim), nomes].forEach(v => {
+            const td = document.createElement('td');
+            td.textContent = v;
+            tr.appendChild(td);
+          });
+          corpo.appendChild(tr);
+        }
+      } catch { mostrar('Não foi possível conectar ao servidor.', 'erro'); }
+    }
+
+    $('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const body = {
+        descricao: $('descricao').value,
+        dataInicio: $('dataInicio').value || null,
+        dataFim: $('dataFim').value || null
+      };
+      $('btn').disabled = true;
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) { mostrar(await erroDaResposta(res), 'erro'); return; }
+        mostrar('Projeto cadastrado com sucesso!', 'ok');
+        $('form').reset();
+        await carregar();
+      } catch { mostrar('Não foi possível conectar ao servidor.', 'erro'); }
+      finally { $('btn').disabled = false; }
+    });
+
+    carregar();
+  </script>
+</body>
+
+</html>
